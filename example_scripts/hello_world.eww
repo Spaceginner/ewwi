@@ -1,0 +1,5 @@
+import $stdlib/io::print;
+
+fnc main || {
+    call print("Hello, World!\n");
+}

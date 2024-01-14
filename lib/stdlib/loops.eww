@@ -1,0 +1,71 @@
+import $eww/{  // internal implementation, the only part which will be not implemented in eww itself; will yield warnings when imported not from stdlib
+    types/function::{reset_ptr, end, freeze_frame!},
+    loops::loop,
+    mem::clone,
+};
+import $stdlib/{
+    types/{
+        function::{Function as Fnc},
+        boolean::{Boolean as bool, self/logic::not!},  // ! would mean function is not fully dirty (returns a value)
+        option::{self, Option as Opt}
+    },
+    conditions::{switch, if},
+    signals,
+};
+
+
+data(pub) signals LoopControl {
+    Break, Continue
+}
+
+
+fnc(pub) loop |callback: &Fnc<[]>| {
+    // 'let once' only initialises the variable once, useful when doing some weeeiiird stuff with reset_ptr(), makes it so that you cant assign to it
+    let once end_framed: Fnc<[]> = freeze_frame!(&end);  // freeze_frame!()  makes it so that the passed function runs as if it was part of the function where the frozen frame was created
+    let once reset_ptr_framed: Fnc<[]> = freeze_frame!(&reset_ptr);
+
+    let control_signal: LoopControl = option::unwrap!(signals::accept!(&%{call #@$eww:loop(callback);}));  // usage of ':' instead of '::' would mean that it refers to the imported item, which was defined in that namespace, needs to be prefixed with '#@'
+
+    call switch<LoopControl>(&#[
+        #[&LoopControl>Break, &end_framed],  // end()  early-exits from function
+        #[&LoopControl>Continue, &reset_ptr_framed]  // reset_ptr()  resets the function pointer, so as if it was ran again with the same arguments, tho does not clear any of local variables
+    ]);
+}
+
+
+fnc(pub) for<T> |
+        initial: &T,
+        update_state: &Fnc<[&mut bool, &T]>,
+        update_value: &Fnc<[&mut T]>,
+        callback: &Fnc<[&T]>
+| {
+    let value: T = clone!<T>(initial);
+    let state: bool = true;
+
+    call loop(&%{
+        call *update_state(&mut state, &value);
+        call if(&%!not!(state), &%{call signals::send(LoopControl>Break);}));
+        call signals::pass(&%{call *callback(&value);});
+        call *update_value(&mut value);
+    });
+}
+
+fnc(pub) while |update_state: &Fnc<[&mut bool]>, callback: &Fnc<[]>| {
+    let state: bool = true;
+
+    call loop(%{
+        call *update_state(&mut state);
+        call if(&%!not!(state), &%{call signals::send(LoopControl>Break);}));
+        call signals::pass(&%{call *callback(&value);});
+    });
+}
+
+fnc(pub) do_while |callback: &Fnc<[]>, update_state: &Fnc<[&mut bool]>| {
+    let state: bool = true;
+
+    call loop(%{
+        call signals::pass(&%{call *callback(&value);});
+        call *update_state(&state);
+        call if(&%!not!(state), &%{call signals::send(LoopControl>Break);}));
+    });
+}

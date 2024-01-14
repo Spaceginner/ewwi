@@ -1,0 +1,47 @@
+// there is no prelude
+import $stdlib/{
+    types/{
+        self::@convert!,
+        result,
+        integer::{self, self/impls/convert::ConvertError, Integer as int},
+        string::{self, String as str},
+    },
+    io::{print, self/utils::ask!},
+    comparison::@is_less!,  // stdlib can do whatever tf it wants, so no warnings for it if it returns a value!
+    arithmetic::@add,  // '@' before functions means its abstract - basically a trait only with 1 function
+    loops::while,
+};
+
+
+fnc fibonacci |n: &mut int| {
+    let a: int = 0;
+    let b: int = 1;
+
+    call for<int>(0,
+        |state: &mut bool, counter: &int| {
+            assign *state = @is_less!(*counter, *n);
+        },
+        |counter: &mut int| {
+            call @add<int>(counter, &1);
+        },
+        |_| {
+            let prev_a: int = a;
+
+            call @add<int>(&mut a, b);
+            call @add<int>(&mut b, prev_a);
+        }
+    );
+
+    assign *n = a;
+}
+
+
+fnc(pub) main || {
+    let n: int = result::unwrap!<int>(@convert!<str, int>(ask!("Which nth fibonacci number to calculate?")));
+
+    call fibonacci(&mut n);
+
+    let answer: str = "{0} fibonacci number: {1}";
+    call string::format(&answer, #[integer::ordinal!(n), @convert!<int, str>(n)]);  // #[] is a tuple
+    call print(answer);
+}

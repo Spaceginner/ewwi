@@ -1,0 +1,9 @@
+[package]
+name = "ewwi"
+version = "0.0.1"
+authors = ["Ivan \"Spaceginner\" <ivan.demian2009@gmail.com>"]
+edition = "2021"
+description = "the interpreter for the disgusting programming language"
+readme = "readme.md"
+repository = "https://github.com/Spaceginner/ewwi"
+license = "MIT"
