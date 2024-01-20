@@ -5,10 +5,12 @@ mod extensions;
 mod utils;
 
 
-const TEST_SCRIPT: &str = include_str!("../lib/stdlib/loops.eww");
+const TEST_SCRIPT: &str = include_str!("../example_scripts/hello_world.eww");
 
 
 fn main() {
-    let words = syntax::lexer::lex(TEST_SCRIPT).expect("lexing failed");
-    words.iter().for_each(|word| println!("{word}"));
+    match syntax::lexer::lex(TEST_SCRIPT) {
+        Ok(words) => { words.iter().for_each(|word| { println!("{word}"); }); },
+        Err(error) => { println!("lexing failed: {error:?}"); },
+    }
 }
