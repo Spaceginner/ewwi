@@ -211,17 +211,19 @@ fn string_escape(s: &str) -> String {
 
 
 #[derive(Debug)]
-pub struct WordStream<C: Iterator<Item = char>> {
+pub struct WordStream<'a, C: Iterator<Item = char>> {
     chars: Enumerate<C>,
     char_queue: VecDeque<(usize, char)>,
     word_queue: VecDeque<Word>,
     lexing_error: Option<LexingError>,
     word_buffer: String,
     lexing_state: LexingState,
+    comment_end_seq: Option<&'a str>,
+    lexing_marker: bool,
 }
 
 
-impl<C> WordStream<C>
+impl<'a, C> WordStream<'a, C>
     where C: Iterator<Item = char>
 {
     pub fn new(chars: C) -> Self {
@@ -232,13 +234,15 @@ impl<C> WordStream<C>
             lexing_error: None,
             word_buffer: String::new(),
             lexing_state: LexingState::default(),
+            comment_end_seq: None,
+            lexing_marker: false,
         }
     }
 }
 
 
 
-impl<C: Iterator<Item = char>> Iterator for WordStream<C> {
+impl<'a, C: Iterator<Item = char>> Iterator for WordStream<'a, C> {
     type Item = Word;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -250,11 +254,7 @@ impl<C: Iterator<Item = char>> Iterator for WordStream<C> {
             return Some(word);
         };
 
-        let mut comment_end_seq = None;
-        let mut lexing_marker = false;
-        let mut exhausted = false;
-
-        while let Some((pos, c)) = self.char_queue.pop_front().or_else(|| self.chars.next()).or_else(|| { exhausted = true; None }) {
+        while self.word_queue.is_empty() && let Some((pos, c)) = self.char_queue.pop_front().or_else(|| self.chars.next()) {
             match self.lexing_state {
                 LexingState::Char => {
                     if c == ESCAPE_SYMBOL && let Some((escape_pos, escape_c)) = self.chars.next() {
@@ -347,37 +347,38 @@ impl<C: Iterator<Item = char>> Iterator for WordStream<C> {
                 }
                 LexingState::Normal => {
                     if COMMENT_PAIRS.iter().map(|pair| pair.0).any(|start_seq| start_seq == self.word_buffer) {
-                        comment_end_seq = Some(COMMENT_PAIRS.iter().find(|pair| pair.0 == self.word_buffer).unwrap().1);
+                        self.comment_end_seq = Some(COMMENT_PAIRS.iter().find(|pair| pair.0 == self.word_buffer).unwrap().1);
                         self.word_buffer.clear();
 
                         self.word_buffer.push(c);
-                    } else if let Some(end_seq) = comment_end_seq {
+                    } else if let Some(end_seq) = self.comment_end_seq {
                         if !utils::have_common_prefix(&self.word_buffer, end_seq) {
                             self.word_buffer.clear();
                         } else if self.word_buffer.len() == end_seq.len() {
                             if self.word_buffer == end_seq {
-                                comment_end_seq = None;
+                                self.comment_end_seq = None;
 
                                 // just because of how junky this whole solution is
                                 if !MARKER_SYMBOLS.contains(&c) {
-                                    lexing_marker = false;
+                                    self.lexing_marker = false;
                                 };
                             };
 
                             self.word_buffer.clear();
                         };
 
-                        if comment_end_seq.is_some() {
+                        if self.comment_end_seq.is_some() {
                             self.word_buffer.push(c);
                         } else if !WORD_SEPARATORS.contains(&c) {
                             self.char_queue.push_back((pos, c));
                         };
                     } else {
-                        if lexing_marker && (!MARKER_SYMBOLS.contains(&c) || c == BREAK_SYMBOL) {
+                        if self.lexing_marker && (!MARKER_SYMBOLS.contains(&c) || c == BREAK_SYMBOL) {
                             let mut buffer = self.word_buffer.take();
                             let mut next_iter = String::default();
                             let mut last_next_iter_len = 0;
                             loop {
+                                // FIXME pos tracking
                                 if buffer.is_empty() {
                                     if next_iter.is_empty() {
                                         break;
@@ -398,8 +399,8 @@ impl<C: Iterator<Item = char>> Iterator for WordStream<C> {
                                 };
                             };
 
-                            lexing_marker = false;
-                        } else if !self.word_buffer.is_empty() && (WORD_SEPARATORS.contains(&c) || (!lexing_marker && MARKER_SYMBOLS.contains(&c)) || c == BREAK_SYMBOL) {
+                            self.lexing_marker = false;
+                        } else if !self.word_buffer.is_empty() && (WORD_SEPARATORS.contains(&c) || (!self.lexing_marker && MARKER_SYMBOLS.contains(&c)) || c == BREAK_SYMBOL) {
                             if KEY_WORDS.contains(&self.word_buffer.as_str()) {
                                 self.word_queue.push_back(match self.word_buffer.take().as_str() {
                                     BOOLEAN_FALSE => Word::LiteralBoolean { pos: pos - BOOLEAN_FALSE.len(), value: false },
@@ -417,10 +418,10 @@ impl<C: Iterator<Item = char>> Iterator for WordStream<C> {
                         if c == BREAK_SYMBOL {
                             self.word_queue.push_back(Word::Break { pos });
                         } else if !WORD_SEPARATORS.contains(&c) {
-                            if !lexing_marker && MARKER_SYMBOLS.contains(&c) {
-                                lexing_marker = true;
+                            if !self.lexing_marker && MARKER_SYMBOLS.contains(&c) {
+                                self.lexing_marker = true;
                                 self.word_buffer.push(c);
-                            } else if lexing_marker {
+                            } else if self.lexing_marker {
                                 self.word_buffer.push(c);
                             } else if self.word_buffer.is_empty() && (DIGITS.contains(&c) || c == INTEGER_NEGATION_SYMBOL) {
                                 let (_, num_c) = if c == INTEGER_NEGATION_SYMBOL {
