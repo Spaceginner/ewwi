@@ -9,8 +9,10 @@ const TEST_SCRIPT: &str = include_str!("../example_scripts/hello_world.eww");
 
 
 fn main() {
-    match syntax::lexer::lex(TEST_SCRIPT) {
-        Ok(words) => { words.iter().for_each(|word| { println!("{word}"); }); },
-        Err(error) => { println!("lexing failed: {error:?}"); },
-    }
+    // match syntax::lexer::lex(TEST_SCRIPT) {
+    //     Ok(words) => { words.iter().for_each(|word| { println!("{word}"); }); },
+    //     Err(error) => { println!("lexing failed: {error:?}"); },
+    // }
+
+    println!("{:?}", syntax::parser::parse(syntax::lexer::WordStream::new("#!$foo/bar::item\n".chars())));
 }
