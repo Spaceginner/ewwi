@@ -63,15 +63,6 @@ impl fmt::Display for Word {
 }
 
 
-#[derive(Debug, Default, Copy, Clone, PartialEq)]
-enum CommentingMode {
-    #[default]
-    Disabled,
-    Endline,
-    Multiline
-}
-
-
 pub const WORD_SEPARATORS: &[char] = &[' ', '\t', '\n'];
 pub const BOOLEAN_TRUE: &str = "true";
 pub const BOOLEAN_FALSE: &str = "false";
