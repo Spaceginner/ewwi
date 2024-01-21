@@ -238,6 +238,10 @@ impl<'a, C> WordStream<'a, C>
             lexing_marker: false,
         }
     }
+
+    pub fn redeem(&mut self, word: Word) {
+        self.word_queue.push_front(word);
+    }
 }
 
 
