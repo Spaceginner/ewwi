@@ -346,7 +346,7 @@ impl<'a, C: Iterator<Item = char>> Iterator for WordStream<'a, C> {
                     }
                 }
                 LexingState::Normal => {
-                    if COMMENT_PAIRS.iter().map(|pair| pair.0).any(|start_seq| start_seq == self.word_buffer) {
+                    if COMMENT_PAIRS.iter().map(|pair| pair.0).any(|start_seq| start_seq == self.word_buffer || self.word_buffer.ends_with(start_seq)) {
                         self.comment_end_seq = Some(COMMENT_PAIRS.iter().find(|pair| pair.0 == self.word_buffer).unwrap().1);
                         self.word_buffer.clear();
 
