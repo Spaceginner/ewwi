@@ -66,12 +66,21 @@ impl fmt::Display for Word {
 pub const WORD_SEPARATORS: &[char] = &[' ', '\t', '\n'];
 pub const BOOLEAN_TRUE: &str = "true";
 pub const BOOLEAN_FALSE: &str = "false";
-pub const KEY_WORDS: &[&str] = &[BOOLEAN_TRUE, BOOLEAN_FALSE, "_", "mut", "pub", "inter", "self", "import", "as", "fnc", "let", "assign", "const", "data", "consts", "signals", "group", "enum", "abst", "fncs", "impl", "return", "call", "once"];
+pub const KEY_WORDS: &[&str] = &[
+    BOOLEAN_TRUE, BOOLEAN_FALSE,
+    "pub", "inter", "self",
+    "import", "as",
+    "fnc", "return", "abst", "_",
+    "let", "once", "assign", "call",
+    "type", "data", "const", "consts", "signals", "group", "enum",
+    "fncs", "impl"
+];
 pub const MARKER_WORDS: &[&str] = &[
     "[{", "}]", "#[", "::", "[", "]",
-    "$", "{", "}", ":", "|", ",", "%", "!",
-    "<", ">", "(", ")", "&", "*", "=", "@",
-    "/", ".", "#!", "#@", "%!", "#{", "}#"
+    "{", "}", ":", "|", ",", "%", "!",
+    "<", ">", "(", ")", "&", "*", "=",
+    "@", ".", "#@", "%!", "#{", "}#",
+    "$", "/", "#!",
 ];
 pub const BREAK_SYMBOL: char = ';';
 pub const STRING_MARKER: char = '"';
