@@ -294,7 +294,8 @@ impl fmt::Display for ModuleIdentifier {
             write!(f, "{}", Self::ABSOLUTE)?;
         };
 
-        write!(f, "{}{}", self.path.join(Self::PATH_SEP), self.name)
+        // XXX perhaps there is a better way..?
+        write!(f, "{}", [self.path.clone(), vec![self.name.clone()]].concat().join(Self::PATH_SEP))
     }
 }
 
