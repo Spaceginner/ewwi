@@ -14,5 +14,6 @@ fn main() {
     //     Err(error) => { println!("lexing failed: {error:?}"); },
     // }
 
-    println!("{:?}", syntax::parser::parse(syntax::lexer::WordStream::new("#!$foo/bar::item\n".chars())));
+    let ast = syntax::parser::parse(syntax::lexer::WordStream::new("call !#!#@$weird/functions::make_noop(.3)(.0, .1, .\"hi!\");\n".chars())).expect("oh no");
+    println!("{ast:#?}\n\n{ast}");
 }

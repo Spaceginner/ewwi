@@ -53,7 +53,7 @@ impl fmt::Display for Word {
             Word::Key { value, pos } => write!(f, "word@{pos} key '{value}'"),
             Word::Marker { value, pos } => write!(f, "word@{pos} marker '{value}'"),
             Word::Break { pos } => write!(f, "word@{pos} break"),
-            Word::LiteralString { pos, value } => write!(f, "word@{pos} literal string \"{}\"", string_escape(value)),
+            Word::LiteralString { pos, value } => write!(f, "word@{pos} literal string \"{}\"", utils::string_escape(value)),
             Word::LiteralChar { pos, value } => write!(f, "word@{pos} literal char '{value}'"),
             Word::LiteralInteger { pos, value } => write!(f, "word@{pos} literal integer {value}"),
             Word::LiteralFloat { pos, value } => write!(f, "word@{pos} literal float {value}"),
@@ -67,20 +67,23 @@ pub const WORD_SEPARATORS: &[char] = &[' ', '\t', '\n'];
 pub const BOOLEAN_TRUE: &str = "true";
 pub const BOOLEAN_FALSE: &str = "false";
 pub const KEY_WORDS: &[&str] = &[
-    BOOLEAN_TRUE, BOOLEAN_FALSE,
-    "pub", "inter", "self",
-    "import", "as",
-    "fnc", "return", "abst", "_",
-    "let", "once", "assign", "call",
-    "type", "data", "const", "consts", "signals", "group", "enum",
-    "fncs", "impl"
+    BOOLEAN_TRUE, BOOLEAN_FALSE,        // literals
+    "pub", "inter", "self",             // scopes
+    "import", "as",                     // importing
+    "fnc", "_", "return", "abst",       // functions
+    "let", "once", "assign", "call",    // commands
+    "type", "data", "const", "consts", "signals", "group", "enum",  // data
+    "fncs", "impl"                      // abstract implementation..?
 ];
 pub const MARKER_WORDS: &[&str] = &[
-    "[{", "}]", "#[", "::", "[", "]",
-    "{", "}", ":", "|", ",", "%", "!",
-    "<", ">", "(", ")", "&", "*", "=",
-    "@", ".", "#@", "%!", "#{", "}#",
-    "$", "/", "#!",
+    "#!", "#@", "$", "/", "::",      // identifiers
+    ":", "<", ">", "#", "<[", "]>",  // types
+    "#", "[", "]", "#[", "]#", "#{", "->", "}#",  // literals
+    "@", "|", "!", "{", "}", "[{", "}]",          // definitions
+    "%", ".", "&", "*", "!",         // expressions
+    "=",       // commands
+    ",",       // goat (item seprator)
+    "(", ")",  // misc
 ];
 pub const BREAK_SYMBOL: char = ';';
 pub const STRING_MARKER: char = '"';
@@ -178,44 +181,12 @@ fn unescape_sequence(seq: &str) -> Result<Option<char>, CharUnescapingError> {
 }
 
 
-fn string_escape(s: &str) -> String {
-    let mut escaped_string = String::new();
-
-    for c in s.chars() {
-        match c {
-            hndl @ ('\\' | '\'' | '\"' | '\x07' | '\x08' | '\x0C' | '\n' | '\r' | '\t' | '\x0B' | '\0')
-                => escaped_string.push_str(match hndl {
-                    '\\' => r"\\",
-                    '\'' => r"\'",
-                    '\"' => r#"\""#,
-                    '\x07' => r"\a",
-                    '\x08' => r"\b",
-                    '\x0C' => r"\f",
-                    '\n' => r"\n",
-                    '\r' => r"\r",
-                    '\t' => r"\t",
-                    '\x0B' => r"\v",
-                    '\0' => r"\0",
-                    _ => unreachable!()
-                }),
-            ctrl if c.is_control() => escaped_string.push_str(&match ctrl as u32 {
-                n @ ..=0xFF => format!(r"\x{:0>2X}", n),
-                n => format!(r"\u{{{:0>4X}}}", n),
-            }),
-            norm => escaped_string.push_str(norm.to_string().as_str()),
-        }
-    };
-
-    escaped_string
-}
-
-
 #[derive(Debug)]
 pub struct WordStream<'a, C: Iterator<Item = char>> {
     chars: Enumerate<C>,
     char_queue: VecDeque<(usize, char)>,
     word_queue: VecDeque<Word>,
-    lexing_error: Option<LexingError>,
+    pub lexing_error: Option<LexingError>,
     word_buffer: String,
     lexing_state: LexingState,
     comment_end_seq: Option<&'a str>,
@@ -448,12 +419,13 @@ impl<'a, C: Iterator<Item = char>> Iterator for WordStream<'a, C> {
                                     (pos, c)
                                 };
 
-                                if num_c == NON_DECIMAL_INTEGER_PREFIX && let Some((_, prefix)) = self.chars.next() {
+                                if num_c == NON_DECIMAL_INTEGER_PREFIX && let Some((prefix_pos, prefix)) = self.chars.next() {
                                     match prefix.to_ascii_lowercase() {
                                         HEX_INTEGER_PREFIX => { self.lexing_state = LexingState::HexInteger; }
                                         BINARY_INTEGER_PREFIX => { self.lexing_state = LexingState::BinaryInteger; }
                                         OCTAL_INTEGER_PREFIX => { self.lexing_state = LexingState::OctalInteger; }
-                                        _ => {
+                                        prefix => {
+                                            self.char_queue.push_front((prefix_pos, prefix));
                                             self.word_buffer.push(num_c);
                                             self.lexing_state = LexingState::Integer;
                                         }
