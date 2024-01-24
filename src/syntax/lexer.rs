@@ -69,6 +69,7 @@ pub const BOOLEAN_FALSE: &str = "false";
 pub const KEY_WORDS: &[&str] = &[
     BOOLEAN_TRUE, BOOLEAN_FALSE,        // literals
     "pub", "inter", "self",             // scopes
+    "mut",                    // expressions
     "import", "as",                     // importing
     "fnc", "_", "return", "abst",       // functions
     "let", "once", "assign", "call",    // commands

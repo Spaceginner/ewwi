@@ -228,6 +228,7 @@ pub enum Expression {
     },
     Reference {
         expression: Box<Expression>,
+        mutually: bool,
     },
     Dereference {
         expression: Box<Expression>,
@@ -245,6 +246,8 @@ impl Expression {
     pub const REFERENCE: &'static str = "&";
     pub const DEREFERENCE: &'static str = "*";
     pub const FUNCTION_CALL: &'static str = "!";
+
+    pub const REFERENCE_MUTUALLY: &'static str = "mut";
 }
 
 
@@ -253,7 +256,7 @@ impl fmt::Display for Expression {
         match self {
             Expression::Variable { identifier } => write!(f, "{}{}", Self::VARIABLE, identifier),
             Expression::Literal { value } => write!(f, "{}{}", Self::LITERAL, value),
-            Expression::Reference { expression } => write!(f, "{}{}", Self::REFERENCE, expression),
+            Expression::Reference { expression, mutually: mutually } => write!(f, "{}{}{}", Self::REFERENCE, if *mutually { format!("{} ", Expression::REFERENCE_MUTUALLY) } else { String::new() }, expression),
             Expression::Dereference { expression } => write!(f, "{}{}", Self::DEREFERENCE, expression),
             Expression::FunctionCall { identifier, arguments } => write!(f, "{}{}{}", Self::FUNCTION_CALL, identifier, arguments),
         }
@@ -535,7 +538,10 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                 match value.as_str() {
                     Expression::VARIABLE => Ok(Expression::Variable { identifier: self.parse_identifier()? }),
                     Expression::LITERAL => Ok(Expression::Literal { value: self.parse_value()? }),
-                    Expression::REFERENCE => Ok(Expression::Reference { expression: Box::new(self.parse_expression()?) }),
+                    Expression::REFERENCE => Ok(Expression::Reference {
+                        mutually: self.next("expression [reference/mutually]")?.opt_keys("expression [reference/mutually]", &mut self.word_stream, &[Expression::REFERENCE_MUTUALLY], &[])?,
+                        expression: Box::new(self.parse_expression()?)
+                    }),
                     Expression::DEREFERENCE => Ok(Expression::Dereference { expression: Box::new(self.parse_expression()?) }),
                     Expression::FUNCTION_CALL => Ok(Expression::FunctionCall { identifier: self.parse_identifier()?, arguments: self.parse_arguments()? }),
                     _ => Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing: "expression [type]", pos, got: value, optional: false,

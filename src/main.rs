@@ -15,7 +15,7 @@ let something: Dict<Str, Union<<[
     ."fizz" = &.#[.5.0, %state]#,
     ."buzz" = .[!do_not_call_or_fired(.'F, .true)],
     ."fizzbuzz" = *%#!$stdlib/types/references::NULL_REFERENCE,
-    ."fizzer" = &!make_factory(),
+    ."fizzer" = &mut !make_factory(),
     ."random" = .4,
     ."description" = ."hi pydis!"
 }#;
