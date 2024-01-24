@@ -29,7 +29,7 @@ mod helper {
         fn opt_common(self, while_parsing: &'static str, word_stream: &mut WordStream<'_, impl Iterator<Item = char>>) -> Result<Option<String>, ParsingError> {
             match self.common(while_parsing) {
                 Ok(value) => Ok(Some(value)),
-                Err(ParsingError::ExpectedCommonWord { got, .. }) => { word_stream.redeem(got); Ok(None) },
+                Err(ParsingError::ExpectedDifferentWord { got, .. }) => { word_stream.redeem(got); Ok(None) },
                 Err(error) => Err(error),
             }
         }
@@ -37,7 +37,7 @@ mod helper {
         fn opt_markers(self, while_parsing: &'static str, word_stream: &mut WordStream<'_, impl Iterator<Item = char>>, expected: &[&str], expected_too: &[&str]) -> Result<bool, ParsingError> {
             match self.markers(while_parsing, expected, expected_too) {
                 Ok(()) => Ok(true),
-                Err(ParsingError::ExpectedMarkerWord { got, .. }) => { word_stream.redeem(got); Ok(false) },
+                Err(ParsingError::ExpectedDifferentWord { got, .. }) => { word_stream.redeem(got); Ok(false) },
                 Err(ParsingError::ExpectedDifferentMarkerWord { pos, got, .. }) => { word_stream.redeem(Word::Marker { pos, value: got }); Ok(false) },
                 Err(error) => Err(error),
             }
@@ -46,7 +46,7 @@ mod helper {
         fn opt_keys(self, while_parsing: &'static str, word_stream: &mut WordStream<'_, impl Iterator<Item = char>>, expected: &[&str], expected_too: &[&str]) -> Result<bool, ParsingError> {
             match self.keys(while_parsing, expected, expected_too) {
                 Ok(()) => Ok(true),
-                Err(ParsingError::ExpectedKeyWord { got, .. }) => { word_stream.redeem(got); Ok(false) },
+                Err(ParsingError::ExpectedDifferentWord { got, .. }) => { word_stream.redeem(got); Ok(false) },
                 Err(ParsingError::ExpectedDifferentKeyWord { pos, got, .. }) => { word_stream.redeem(Word::Key { pos, value: got }); Ok(false) },
                 Err(error) => Err(error),
             }
@@ -57,14 +57,16 @@ mod helper {
         fn r#break(self, while_parsing: &'static str) -> Result<(), ParsingError> {
             match self {
                 Word::Break { .. } => Ok(()),
-                word => Err(ParsingError::ExpectedBreakWord { while_parsing, got: word })
+                word => Err(ParsingError::ExpectedDifferentWord { while_parsing, got: word,
+                    expecting_break: true, expecting_marker: false, expecting_literal: false, expecting_key: false, expecting_common: false })
             }
         }
 
         fn common(self, while_parsing: &'static str) -> Result<String, ParsingError> {
             match self {
                 Word::Common { value, .. } => Ok(value),
-                word => Err(ParsingError::ExpectedCommonWord { while_parsing, got: word }),
+                word => Err(ParsingError::ExpectedDifferentWord { while_parsing, got: word,
+                    expecting_break: false, expecting_marker: false, expecting_literal: false, expecting_key: false, expecting_common: true }),
             }
         }
 
@@ -76,7 +78,8 @@ mod helper {
                         _ => Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing, pos, got: value, optional: false,
                             expected: [le_convert(values), le_convert(expected_too)].concat() })
                     },
-                _ => Err(ParsingError::ExpectedMarkerWord { while_parsing, got: self }),
+                _ => Err(ParsingError::ExpectedDifferentWord { while_parsing, got: self,
+                    expecting_break: false, expecting_marker: true, expecting_literal: false, expecting_key: false, expecting_common: false }),
             }
         }
 
@@ -88,7 +91,8 @@ mod helper {
                         _ => Err(ParsingError::ExpectedDifferentKeyWord { while_parsing, pos, got: value, optional: false,
                             expected: [le_convert(values), le_convert(expected_too)].concat() })
                     },
-                _ => Err(ParsingError::ExpectedKeyWord { while_parsing, got: self }),
+                _ => Err(ParsingError::ExpectedDifferentWord { while_parsing, got: self,
+                    expecting_break: false, expecting_marker: false, expecting_literal: false, expecting_key: true, expecting_common: false }),
             }
         }
     }
@@ -121,25 +125,14 @@ pub enum ParsingError {
         while_parsing: &'static str,
         lexing_error: Option<LexingError>,
     },
-    ExpectedCommonWord {
+    ExpectedDifferentWord {
         while_parsing: &'static str,
         got: Word,
-    },
-    ExpectedKeyWord {
-        while_parsing: &'static str,
-        got: Word,
-    },
-    ExpectedMarkerWord {
-        while_parsing: &'static str,
-        got: Word,
-    },
-    ExpectedBreakWord {
-        while_parsing: &'static str,
-        got: Word,
-    },
-    ExpectedLiteralWord {
-        while_parsing: &'static str,
-        got: Word,
+        expecting_common: bool,
+        expecting_marker: bool,
+        expecting_key: bool,
+        expecting_literal: bool,
+        expecting_break: bool,
     },
     ExpectedDifferentKeyWord {
         while_parsing: &'static str,
@@ -219,7 +212,7 @@ impl fmt::Display for Value {
             Value::String(value) => write!(f, "{}{}{}", Self::STRING, utils::string_escape(value.as_str()), Self::STRING),
             Value::List(values) => write!(f, "{}{}{}", Self::LIST_PAIR.0, join_items!(values, ITEM_SEPARATOR), Self::LIST_PAIR.1),
             Value::Tuple(values) => write!(f, "{}{}{}", Self::TUPLE_PAIR.0, join_items!(values, ITEM_SEPARATOR), Self::TUPLE_PAIR.1),
-            Value::Dictionary(value_pairs) => todo!(),
+            Value::Dictionary(value_pairs) => write!(f, "{}{}{}", Self::DICTIONARY_PAIR.0, value_pairs.iter().map(|v_pair| format!("{} {} {}", v_pair.0, Command::ASSIGN, v_pair.1)).collect::<Vec<_>>().join(&format!("{} ", ITEM_SEPARATOR)), Self::DICTIONARY_PAIR.1),
         }
     }
 }
@@ -490,7 +483,7 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
 
                 Some(module)
             },
-            Err(ParsingError::ExpectedMarkerWord { got, .. }) => { word = got; None },
+            Err(ParsingError::ExpectedDifferentWord { got, .. }) => { word = got; None },
             Err(err) => return Err(err),
         };
 
@@ -504,7 +497,31 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
             Word::LiteralFloat { value, .. } => Ok(Value::Float(value)),
             Word::LiteralChar { value, .. } => Ok(Value::Char(value)),
             Word::LiteralString { value, .. } => Ok(Value::String(value)),
-            _ => todo!()
+            Word::Marker { value, pos } =>
+                match value.as_str() {
+                    v if [Value::LIST_PAIR.0, Value::TUPLE_PAIR.0, Value::DICTIONARY_PAIR.0].contains(&v) => {
+                        self.word_stream.redeem(Word::Marker { value: v.to_string(), pos });
+
+                        match v {
+                            v if v == Value::LIST_PAIR.0 => Ok(Value::List(self.parse_items("value [list]", Value::LIST_PAIR, Self::parse_expression)?)),
+                            v if v == Value::TUPLE_PAIR.0 => Ok(Value::Tuple(self.parse_items("value [tuple]", Value::TUPLE_PAIR, Self::parse_expression)?)),
+                            v if v == Value::DICTIONARY_PAIR.0 => Ok(Value::Dictionary(self.parse_items("value [dictionary]", Value::DICTIONARY_PAIR,
+                                |parser| {
+                                    let key = parser.parse_expression()?;
+                                    parser.next("value [dictionary/item/<assign>]")?.markers("value [dictionary/item/<assign>]", &[Command::ASSIGN], &[])?;
+                                    let value = parser.parse_expression()?;
+                                    Ok((key, value))
+                                }
+                            )?)),
+                            _ => unreachable!(),
+                        }
+                    }
+                    _ => Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing: "value [kind/complex]", pos, got: value,
+                        optional: true /* TODO describe optionality via enum, for cases like this where it is nor required nor optional */,
+                        expected: helper::le_convert(&[Value::LIST_PAIR.0, Value::TUPLE_PAIR.0, Value::DICTIONARY_PAIR.0]) })
+                },
+            word => Err(ParsingError::ExpectedDifferentWord { while_parsing: "value [kind]", got: word,
+                expecting_break: false, expecting_marker: true, expecting_literal: true, expecting_key: false, expecting_common: false})
         }
     }
 
@@ -524,7 +541,8 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                     _ => Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing: "expression [type]", pos, got: value, optional: false,
                         expected: helper::le_convert(&[Expression::VARIABLE, Expression::LITERAL, Expression::REFERENCE, Expression::DEREFERENCE, Expression::FUNCTION_CALL]) })
                 },
-            word => Err(ParsingError::ExpectedMarkerWord { while_parsing: "expression [type]", got: word }),
+            word => Err(ParsingError::ExpectedDifferentWord { while_parsing: "expression [type]", got: word,
+                expecting_break: false, expecting_marker: true, expecting_literal: false, expecting_key: false, expecting_common: false }),
         }
     }
 
@@ -549,7 +567,8 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                         _ => return Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing, pos, got: value, optional: false,
                             expected: helper::le_convert(&[marker_pair.1, ITEM_SEPARATOR]) }),
                     },
-                word => return Err(ParsingError::ExpectedMarkerWord { while_parsing, got: word }),
+                word => return Err(ParsingError::ExpectedDifferentWord { while_parsing, got: word,
+                    expecting_break: false, expecting_marker: true, expecting_literal: false, expecting_key: false, expecting_common: false }),
             };
         };
 
@@ -576,7 +595,8 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                             _ => return Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing, pos, got: value, optional: false,
                                 expected: helper::le_convert(&[marker_pair.1, ITEM_SEPARATOR]) }),
                         },
-                    word => return Err(ParsingError::ExpectedMarkerWord { while_parsing, got: word }),
+                    word => return Err(ParsingError::ExpectedDifferentWord { while_parsing, got: word,
+                        expecting_break: false, expecting_marker: true, expecting_literal: false, expecting_key: false, expecting_common: false }),
                 };
             };
         };
@@ -654,7 +674,8 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                         expected: helper::le_convert(&[Command::DECLARE_KEYWORD, Command::ASSIGN_KEYWORD, Command::CALL_KEYWORD]) })
                 }
             },
-            word => Err(ParsingError::ExpectedKeyWord { while_parsing: "command [kind]", got: word })
+            word => Err(ParsingError::ExpectedDifferentWord { while_parsing: "command [kind]", got: word,
+                expecting_break: false, expecting_marker: false, expecting_literal: false, expecting_key: true, expecting_common: false })
         }
     }
 
