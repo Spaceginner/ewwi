@@ -8,7 +8,7 @@ mod utils;
 const TEST_SCRIPT: &str = include_str!("../example_scripts/hello_world.eww");
 const TEST_COMMAND: &str = r#"
 let something: Dict<Str, Union<<[
-                                 Reference<#!#@$eww/types/anything::Anything>,
+                                 &#!#@$eww/types/anything::Anything,
                                  List<#!#@$eww/types/anything::Anything>,
                                  Undefined, Int, Str
                          ]>>> = .#{

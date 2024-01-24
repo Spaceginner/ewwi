@@ -116,6 +116,14 @@ mod helper {
             }
         };
     }
+
+    pub fn opt_v<T: Default>(cond: bool, v: T) -> T {
+        if cond {
+            v
+        } else {
+            Default::default()
+        }
+    }
 }
 
 
@@ -243,11 +251,11 @@ pub enum Expression {
 impl Expression {
     pub const VARIABLE: &'static str = "%";
     pub const LITERAL: &'static str = ".";
-    pub const REFERENCE: &'static str = "&";
+    pub const REFERENCE: &'static str = Type::REFERENCE;
     pub const DEREFERENCE: &'static str = "*";
     pub const FUNCTION_CALL: &'static str = "!";
 
-    pub const REFERENCE_MUTUALLY: &'static str = "mut";
+    pub const REFERENCE_MUTUALLY_KEYWORD: &'static str = Type::MUTUAL_REFERENCE_KEYWORD;
 }
 
 
@@ -256,7 +264,7 @@ impl fmt::Display for Expression {
         match self {
             Expression::Variable { identifier } => write!(f, "{}{}", Self::VARIABLE, identifier),
             Expression::Literal { value } => write!(f, "{}{}", Self::LITERAL, value),
-            Expression::Reference { expression, mutually: mutually } => write!(f, "{}{}{}", Self::REFERENCE, if *mutually { format!("{} ", Expression::REFERENCE_MUTUALLY) } else { String::new() }, expression),
+            Expression::Reference { expression, mutually } => write!(f, "{}{}{}", Self::REFERENCE, helper::opt_v(*mutually, format!("{} ", Expression::REFERENCE_MUTUALLY_KEYWORD)), expression),
             Expression::Dereference { expression } => write!(f, "{}{}", Self::DEREFERENCE, expression),
             Expression::FunctionCall { identifier, arguments } => write!(f, "{}{}{}", Self::FUNCTION_CALL, identifier, arguments),
         }
@@ -363,19 +371,31 @@ impl_display_grouping!(AppliedGenerics, false);
 
 
 #[derive(Debug)]
-pub struct Type {
-    pub identifier: Identifier,
-    pub applied_generics: AppliedGenerics,
+pub enum Type {
+    Owned {
+        identifier: Identifier,
+        applied_generics: AppliedGenerics,
+    },
+    Reference {
+        mutual: bool,
+        of: Box<Type>
+    }
 }
 
 impl Type {
     pub const ANNOTATION: &'static str = ":";
+
+    pub const REFERENCE: &'static str = "&";
+    pub const MUTUAL_REFERENCE_KEYWORD: &'static str = "mut";
 }
 
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.identifier, self.applied_generics)
+        match self {
+            Type::Owned { identifier, applied_generics } => write!(f, "{}{}", identifier, applied_generics),
+            Type::Reference { mutual, of } => write!(f, "{}{}{}", Self::REFERENCE, helper::opt_v(*mutual, format!("{} ", Self::MUTUAL_REFERENCE_KEYWORD)), of)
+        }
     }
 }
 
@@ -425,7 +445,7 @@ impl fmt::Display for Command {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Command::Declare { name, rewritable, r#type, expression } =>
-                write!(f, "{}{} {}{} {} {} {}{BREAK}", Self::DECLARE_KEYWORD, if !*rewritable { format!(" {}", Self::DECLARE_ONCE_KEYWORD) } else { String::new() }, name, Type::ANNOTATION, r#type, Self::ASSIGN, expression),
+                write!(f, "{}{} {}{} {} {} {}{BREAK}", Self::DECLARE_KEYWORD, helper::opt_v(!*rewritable, format!(" {}", Self::DECLARE_ONCE_KEYWORD)), name, Type::ANNOTATION, r#type, Self::ASSIGN, expression),
             Command::Assign { to, expression } => write!(f, "{} {to} {} {expression}{BREAK}", Self::ASSIGN_KEYWORD, Self::ASSIGN),
             Command::Call { function, arguments } => write!(f, "{} {function}{arguments}{BREAK}", Self::CALL_KEYWORD),
         }
@@ -539,7 +559,7 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                     Expression::VARIABLE => Ok(Expression::Variable { identifier: self.parse_identifier()? }),
                     Expression::LITERAL => Ok(Expression::Literal { value: self.parse_value()? }),
                     Expression::REFERENCE => Ok(Expression::Reference {
-                        mutually: self.next("expression [reference/mutually]")?.opt_keys("expression [reference/mutually]", &mut self.word_stream, &[Expression::REFERENCE_MUTUALLY], &[])?,
+                        mutually: self.next("expression [reference/mutually]")?.opt_keys("expression [reference/mutually]", &mut self.word_stream, &[Expression::REFERENCE_MUTUALLY_KEYWORD], &[])?,
                         expression: Box::new(self.parse_expression()?)
                     }),
                     Expression::DEREFERENCE => Ok(Expression::Dereference { expression: Box::new(self.parse_expression()?) }),
@@ -633,10 +653,17 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
     }
 
     fn parse_type(&mut self) -> Res<Type> {
-        let identifier = self.parse_identifier()?;
-        let applied_generics = self.parse_applied_generics()?;
+        if self.next("type [is_reference]")?.opt_markers("type [is_reference]", &mut self.word_stream, &[Type::REFERENCE], &[])? {
+            let mutual = self.next("type [reference/is_mutual]")?.opt_keys("type [reference/is_mutual]", &mut self.word_stream, &[Type::MUTUAL_REFERENCE_KEYWORD], &[])?;
+            let of = self.parse_type()?;
 
-        Ok(Type { identifier, applied_generics })
+            Ok(Type::Reference { mutual, of: Box::new(of) })
+        } else {
+            let identifier = self.parse_identifier()?;
+            let applied_generics = self.parse_applied_generics()?;
+
+            Ok(Type::Owned { identifier, applied_generics })
+        }
     }
 
     fn parse_type_annotation(&mut self) -> Res<Type> {
