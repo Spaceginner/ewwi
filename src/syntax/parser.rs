@@ -228,7 +228,10 @@ impl fmt::Display for Value {
 
 #[derive(Debug)]
 pub enum Expression {
-    Variable {
+    GetVariable {
+        identifier: Identifier,
+    },
+    RawVariable {
         identifier: Identifier,
     },
     Literal {
@@ -249,11 +252,12 @@ pub enum Expression {
 
 
 impl Expression {
-    pub const VARIABLE: &'static str = "%";
+    pub const GET_VARIABLE: &'static str = "%";
     pub const LITERAL: &'static str = ".";
     pub const REFERENCE: &'static str = Type::REFERENCE;
     pub const DEREFERENCE: &'static str = "*";
     pub const FUNCTION_CALL: &'static str = "!";
+    pub const RAW_VARIABLE: &'static str = "#";
 
     pub const REFERENCE_MUTUALLY_KEYWORD: &'static str = Type::MUTUAL_REFERENCE_KEYWORD;
 }
@@ -262,7 +266,8 @@ impl Expression {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::Variable { identifier } => write!(f, "{}{}", Self::VARIABLE, identifier),
+            Expression::GetVariable { identifier } => write!(f, "{}{}", Self::GET_VARIABLE, identifier),
+            Expression::RawVariable { identifier } => write!(f, "{}{}", Self::RAW_VARIABLE, identifier),
             Expression::Literal { value } => write!(f, "{}{}", Self::LITERAL, value),
             Expression::Reference { expression, mutually } => write!(f, "{}{}{}", Self::REFERENCE, helper::opt_v(*mutually, format!("{} ", Expression::REFERENCE_MUTUALLY_KEYWORD)), expression),
             Expression::Dereference { expression } => write!(f, "{}{}", Self::DEREFERENCE, expression),
@@ -427,6 +432,9 @@ pub enum Command {
     Call {
         function: Expression,
         arguments: Arguments,
+    },
+    Return {
+        expression: Expression,
     }
 }
 
@@ -434,6 +442,7 @@ impl Command {
     pub const DECLARE_KEYWORD: &'static str = "let";
     pub const ASSIGN_KEYWORD: &'static str = "assign";
     pub const CALL_KEYWORD: &'static str = "call";
+    pub const RETURN_KEYWORD: &'static str = "return";
 
     pub const DECLARE_ONCE_KEYWORD: &'static str = "once";
 
@@ -448,9 +457,17 @@ impl fmt::Display for Command {
                 write!(f, "{}{} {}{} {} {} {}{BREAK}", Self::DECLARE_KEYWORD, helper::opt_v(!*rewritable, format!(" {}", Self::DECLARE_ONCE_KEYWORD)), name, Type::ANNOTATION, r#type, Self::ASSIGN, expression),
             Command::Assign { to, expression } => write!(f, "{} {to} {} {expression}{BREAK}", Self::ASSIGN_KEYWORD, Self::ASSIGN),
             Command::Call { function, arguments } => write!(f, "{} {function}{arguments}{BREAK}", Self::CALL_KEYWORD),
+            Command::Return { expression } => write!(f, "{} {expression}{BREAK}", Self::RETURN_KEYWORD),
         }
     }
 }
+
+
+#[derive(Debug)]
+pub enum Definition {
+
+}
+
 
 
 pub struct Parser<'a, C: Iterator<Item = char>> {
@@ -556,7 +573,8 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
         match self.next("expression [type]")? {
             Word::Marker { value, pos } =>
                 match value.as_str() {
-                    Expression::VARIABLE => Ok(Expression::Variable { identifier: self.parse_identifier()? }),
+                    Expression::GET_VARIABLE => Ok(Expression::GetVariable { identifier: self.parse_identifier()? }),
+                    Expression::RAW_VARIABLE => Ok(Expression::RawVariable { identifier: self.parse_identifier()? }),
                     Expression::LITERAL => Ok(Expression::Literal { value: self.parse_value()? }),
                     Expression::REFERENCE => Ok(Expression::Reference {
                         mutually: self.next("expression [reference/mutually]")?.opt_keys("expression [reference/mutually]", &mut self.word_stream, &[Expression::REFERENCE_MUTUALLY_KEYWORD], &[])?,
@@ -565,7 +583,7 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                     Expression::DEREFERENCE => Ok(Expression::Dereference { expression: Box::new(self.parse_expression()?) }),
                     Expression::FUNCTION_CALL => Ok(Expression::FunctionCall { identifier: self.parse_identifier()?, arguments: self.parse_arguments()? }),
                     _ => Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing: "expression [type]", pos, got: value, optional: false,
-                        expected: helper::le_convert(&[Expression::VARIABLE, Expression::LITERAL, Expression::REFERENCE, Expression::DEREFERENCE, Expression::FUNCTION_CALL]) })
+                        expected: helper::le_convert(&[Expression::GET_VARIABLE, Expression::RAW_VARIABLE, Expression::LITERAL, Expression::REFERENCE, Expression::DEREFERENCE, Expression::FUNCTION_CALL]) })
                 },
             word => Err(ParsingError::ExpectedDifferentWord { while_parsing: "expression [type]", got: word,
                 expecting_break: false, expecting_marker: true, expecting_literal: false, expecting_key: false, expecting_common: false }),
@@ -702,6 +720,9 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                         self.next("command [call/<end>]")?.r#break("command [call/<end>]")?;
 
                         Ok(Command::Call { function, arguments })
+                    },
+                    Command::RETURN_KEYWORD => {
+                        Ok(Command::Return { expression: self.parse_expression()? })
                     },
                     _ => Err(ParsingError::ExpectedDifferentKeyWord { while_parsing: "command [kind]", pos, got: value, optional: false,
                         expected: helper::le_convert(&[Command::DECLARE_KEYWORD, Command::ASSIGN_KEYWORD, Command::CALL_KEYWORD]) })

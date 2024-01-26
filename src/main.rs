@@ -12,7 +12,7 @@ let something: Dict<Str, Union<<[
                                  List<#!#@$eww/types/anything::Anything>,
                                  Undefined, Int, Str
                          ]>>> = .#{
-    ."fizz" = &.#[.5.0, %state]#,
+    ."fizz" = &.#[.5.0, #state]#,
     ."buzz" = .[!do_not_call_or_fired(.'F, .true)],
     ."fizzbuzz" = *%#!$stdlib/types/references::NULL_REFERENCE,
     ."fizzer" = &mut !make_factory(),

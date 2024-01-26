@@ -77,11 +77,11 @@ pub const KEY_WORDS: &[&str] = &[
     "fncs", "impl"                      // abstract implementation..?
 ];
 pub const MARKER_WORDS: &[&str] = &[
-    "#!", "#@", "$", "/", "::",      // identifiers
-    ":", "<", ">", "#", "<[", "]>",  // types
-    "#", "[", "]", "#[", "]#", "#{", "->", "}#",  // literals
-    "@", "|", "!", "{", "}", "[{", "}]",          // definitions
-    "%", ".", "&", "*", "!",         // expressions
+    "#!", "#@", "$", "/", "::",           // identifiers
+    ":", "<", ">", "#", "<[", "]>",       // types
+    "[", "]", "#[", "]#", "#{", "}#",     // literals
+    "@", "|", "!", "{", "}", "[{", "}]",  // definitions
+    "%", ".", "&", "*", "!", "#",         // expressions
     "=",       // commands
     ",",       // goat (item seprator)
     "(", ")",  // misc
