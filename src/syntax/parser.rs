@@ -722,7 +722,11 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                         Ok(Command::Call { function, arguments })
                     },
                     Command::RETURN_KEYWORD => {
-                        Ok(Command::Return { expression: self.parse_expression()? })
+                        let expression = self.parse_expression()?;
+
+                        self.next("command [return/<end>]")?.r#break("command [return/<end>]")?;
+
+                        Ok(Command::Return { expression })
                     },
                     _ => Err(ParsingError::ExpectedDifferentKeyWord { while_parsing: "command [kind]", pos, got: value, optional: false,
                         expected: helper::le_convert(&[Command::DECLARE_KEYWORD, Command::ASSIGN_KEYWORD, Command::CALL_KEYWORD]) })
