@@ -7,8 +7,7 @@ use crate::utils;
 
 #[macro_use]
 mod helper {
-    use crate::syntax::lexer::WordStream;
-    use super::super::lexer::Word;
+    use crate::syntax::lexer::{WordStream, Word};
     use super::ParsingError;
 
     pub fn le_convert(ss: &[&str]) -> Vec<String> {
