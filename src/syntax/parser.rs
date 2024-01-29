@@ -226,9 +226,15 @@ impl fmt::Display for Value {
 
 
 #[derive(Debug)]
+pub enum DataType {
+    Fncs, Consts, Signals, Group, Tuple, Enum
+}
+
+
+#[derive(Debug)]
 pub enum Expression {
     GetVariable {
-        identifier: Identifier,
+        variable: Box<Expression>,
     },
     RawVariable {
         identifier: Identifier,
@@ -244,9 +250,22 @@ pub enum Expression {
         expression: Box<Expression>,
     },
     FunctionCall {
-        identifier: Identifier,
+        function: Box<Expression>,
+        applied_generics: AppliedGenerics,
         arguments: Arguments,
-    }
+    },
+    Deabstract {
+        with: Box<Type>,
+        expression: Box<Expression>,
+    },
+    NewTypeAccess {
+        newtype: Box<Expression>
+    },
+    AccessData {
+        data: Box<Expression>,
+        r#type: DataType,
+        field: String,
+    },
 }
 
 
@@ -257,20 +276,42 @@ impl Expression {
     pub const DEREFERENCE: &'static str = "*";
     pub const FUNCTION_CALL: &'static str = "!";
     pub const RAW_VARIABLE: &'static str = "#";
+    pub const DEABSTRACT: &'static str = "@";
+    pub const DATA_ACCESS: &'static str = "?";
+    pub const NEWTYPE_ACCESS: &'static str = "?$";
 
     pub const REFERENCE_MUTUALLY_KEYWORD: &'static str = Type::MUTUAL_REFERENCE_KEYWORD;
+
+    pub const DATA_FNCS_ACCESS: &'static str = "#>";
+    pub const DATA_CONSTS_ACCESS: &'static str = "->";
+    pub const DATA_SIGNALS_ACCESS: &'static str = ">>";
+    pub const DATA_GROUP_ACCESS: &'static str = ".>";
+    pub const DATA_TUPLE_ACCESS: &'static str = "%>";
+    pub const DATA_ENUM_ACCESS: &'static str = "$>";
 }
 
 
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expression::GetVariable { identifier } => write!(f, "{}{}", Self::GET_VARIABLE, identifier),
-            Expression::RawVariable { identifier } => write!(f, "{}{}", Self::RAW_VARIABLE, identifier),
+            Expression::GetVariable { variable } => write!(f, "{}{variable}", Self::GET_VARIABLE),
+            Expression::RawVariable { identifier } => write!(f, "{}{identifier}", Self::RAW_VARIABLE),
             Expression::Literal { value } => write!(f, "{}{}", Self::LITERAL, value),
-            Expression::Reference { expression, mutually } => write!(f, "{}{}{}", Self::REFERENCE, helper::opt_v(*mutually, format!("{} ", Expression::REFERENCE_MUTUALLY_KEYWORD)), expression),
+            Expression::Reference { expression, mutually } => write!(f, "{}{}{expression}", Self::REFERENCE, helper::opt_v(*mutually, format!("{} ", Expression::REFERENCE_MUTUALLY_KEYWORD))),
             Expression::Dereference { expression } => write!(f, "{}{}", Self::DEREFERENCE, expression),
-            Expression::FunctionCall { identifier, arguments } => write!(f, "{}{}{}", Self::FUNCTION_CALL, identifier, arguments),
+            Expression::FunctionCall { function, applied_generics, arguments } => write!(f, "{}{function}{applied_generics}{arguments}", Self::FUNCTION_CALL),
+            Expression::Deabstract { with, expression } => write!(f, "{}{}{with}{}{expression}", Self::DEABSTRACT, AppliedGenerics::PAIR.0, AppliedGenerics::PAIR.1),
+            Expression::AccessData { data, r#type, field } => {
+                write!(f, "{}{data}{}{field}", Self::DATA_ACCESS, match r#type {
+                    DataType::Fncs => Self::DATA_FNCS_ACCESS,
+                    DataType::Consts => Self::DATA_CONSTS_ACCESS,
+                    DataType::Signals => Self::DATA_SIGNALS_ACCESS,
+                    DataType::Group => Self::DATA_GROUP_ACCESS,
+                    DataType::Tuple => Self::DATA_TUPLE_ACCESS,
+                    DataType::Enum => Self::DATA_ENUM_ACCESS,
+                })
+            },
+            Expression::NewTypeAccess { newtype } => write!(f, "{}{newtype}", Self::NEWTYPE_ACCESS)
         }
     }
 }
@@ -377,7 +418,7 @@ impl_display_grouping!(AppliedGenerics, false);
 #[derive(Debug)]
 pub enum Type {
     Owned {
-        identifier: Identifier,
+        expression: Expression,
         applied_generics: AppliedGenerics,
     },
     Reference {
@@ -397,7 +438,7 @@ impl Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Type::Owned { identifier, applied_generics } => write!(f, "{}{}", identifier, applied_generics),
+            Type::Owned { expression, applied_generics } => write!(f, "{}{}", expression, applied_generics),
             Type::Reference { mutual, of } => write!(f, "{}{}{}", Self::REFERENCE, helper::opt_v(*mutual, format!("{} ", Self::MUTUAL_REFERENCE_KEYWORD)), of)
         }
     }
@@ -430,6 +471,7 @@ pub enum Command {
     },
     Call {
         function: Expression,
+        applied_generics: AppliedGenerics,
         arguments: Arguments,
     },
     Return {
@@ -455,7 +497,7 @@ impl fmt::Display for Command {
             Command::Declare { name, rewritable, r#type, expression } =>
                 write!(f, "{}{} {}{} {} {} {}{BREAK}", Self::DECLARE_KEYWORD, helper::opt_v(!*rewritable, format!(" {}", Self::DECLARE_ONCE_KEYWORD)), name, Type::ANNOTATION, r#type, Self::ASSIGN, expression),
             Command::Assign { to, expression } => write!(f, "{} {to} {} {expression}{BREAK}", Self::ASSIGN_KEYWORD, Self::ASSIGN),
-            Command::Call { function, arguments } => write!(f, "{} {function}{arguments}{BREAK}", Self::CALL_KEYWORD),
+            Command::Call { function, applied_generics, arguments } => write!(f, "{} {function}{applied_generics}{arguments}{BREAK}", Self::CALL_KEYWORD),
             Command::Return { expression } => write!(f, "{} {expression}{BREAK}", Self::RETURN_KEYWORD),
         }
     }
@@ -572,7 +614,7 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
         match self.next("expression [type]")? {
             Word::Marker { value, pos } =>
                 match value.as_str() {
-                    Expression::GET_VARIABLE => Ok(Expression::GetVariable { identifier: self.parse_identifier()? }),
+                    Expression::GET_VARIABLE => Ok(Expression::GetVariable { variable: Box::new(self.parse_expression()?) }),
                     Expression::RAW_VARIABLE => Ok(Expression::RawVariable { identifier: self.parse_identifier()? }),
                     Expression::LITERAL => Ok(Expression::Literal { value: self.parse_value()? }),
                     Expression::REFERENCE => Ok(Expression::Reference {
@@ -580,7 +622,38 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                         expression: Box::new(self.parse_expression()?)
                     }),
                     Expression::DEREFERENCE => Ok(Expression::Dereference { expression: Box::new(self.parse_expression()?) }),
-                    Expression::FUNCTION_CALL => Ok(Expression::FunctionCall { identifier: self.parse_identifier()?, arguments: self.parse_arguments()? }),
+                    Expression::FUNCTION_CALL => Ok(Expression::FunctionCall { function: Box::new(self.parse_expression()?), applied_generics: self.parse_applied_generics()?, arguments: self.parse_arguments()? }),
+                    Expression::DEABSTRACT => {
+                        self.next("expression [deabstract/with/<begin>]")?.markers("expression [deabstract/with/<begin>]", &[AppliedGenerics::PAIR.0], &[])?;
+                        let with = self.parse_type()?;
+                        self.next("expression [deabstract/with/<end>]")?.markers("expression [deabstract/with/<end>]", &[AppliedGenerics::PAIR.1], &[])?;
+
+                        let expression = self.parse_expression()?;
+
+                        Ok(Expression::Deabstract { with: Box::new(with), expression: Box::new(expression) })
+                    },
+                    Expression::NEWTYPE_ACCESS => Ok(Expression::NewTypeAccess { newtype: Box::new(self.parse_expression()?) }),
+                    Expression::DATA_ACCESS => {
+                        let data = self.parse_expression()?;
+                        let r#type = match self.next("expression [data/type]")? {
+                            Word::Marker { value, pos } =>
+                                match value.as_str() {
+                                    Expression::DATA_FNCS_ACCESS => DataType::Fncs,
+                                    Expression::DATA_CONSTS_ACCESS => DataType::Consts,
+                                    Expression::DATA_SIGNALS_ACCESS => DataType::Signals,
+                                    Expression::DATA_GROUP_ACCESS => DataType::Group,
+                                    Expression::DATA_TUPLE_ACCESS => DataType::Tuple,
+                                    Expression::DATA_ENUM_ACCESS => DataType::Enum,
+                                    _ => return Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing: "expression [data/type]", pos, got: value, optional: false,
+                                        expected: helper::le_convert(&[Expression::DATA_FNCS_ACCESS, Expression::DATA_CONSTS_ACCESS, Expression::DATA_SIGNALS_ACCESS, Expression::DATA_GROUP_ACCESS, Expression::DATA_TUPLE_ACCESS, Expression::DATA_ENUM_ACCESS]) }),
+                                },
+                            word => return Err(ParsingError::ExpectedDifferentWord { while_parsing: "expression [data/type]", got: word,
+                                expecting_break: false, expecting_marker: true, expecting_literal: false, expecting_key: false, expecting_common: false })
+                        };
+                        let field = self.next("expression [data/field]")?.common("expression [data/field]")?;
+
+                        Ok(Expression::AccessData { data: Box::new(data), r#type, field })
+                    },
                     _ => Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing: "expression [type]", pos, got: value, optional: false,
                         expected: helper::le_convert(&[Expression::GET_VARIABLE, Expression::RAW_VARIABLE, Expression::LITERAL, Expression::REFERENCE, Expression::DEREFERENCE, Expression::FUNCTION_CALL]) })
                 },
@@ -676,10 +749,10 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
 
             Ok(Type::Reference { mutual, of: Box::new(of) })
         } else {
-            let identifier = self.parse_identifier()?;
+            let expression = self.parse_expression()?;
             let applied_generics = self.parse_applied_generics()?;
 
-            Ok(Type::Owned { identifier, applied_generics })
+            Ok(Type::Owned { expression, applied_generics })
         }
     }
 
@@ -714,11 +787,12 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
                     },
                     Command::CALL_KEYWORD => {
                         let function = self.parse_expression()?;
+                        let applied_generics = self.parse_applied_generics()?;
                         let arguments = self.parse_arguments()?;
 
                         self.next("command [call/<end>]")?.r#break("command [call/<end>]")?;
 
-                        Ok(Command::Call { function, arguments })
+                        Ok(Command::Call { function, applied_generics, arguments })
                     },
                     Command::RETURN_KEYWORD => {
                         let expression = self.parse_expression()?;
