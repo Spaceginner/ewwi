@@ -354,7 +354,6 @@ impl<'a, C: Iterator<Item = char>> Iterator for WordStream<'a, C> {
                             let mut next_iter = String::default();
                             let mut last_next_iter_len = 0;
                             loop {
-                                // FIXME pos tracking
                                 if buffer.is_empty() {
                                     if next_iter.is_empty() {
                                         break;
@@ -371,7 +370,7 @@ impl<'a, C: Iterator<Item = char>> Iterator for WordStream<'a, C> {
                                     next_iter.push_str(discarded);
                                     buffer = next_buffer.to_string();
                                 } else {
-                                    self.word_queue.push_back(Word::Marker { pos: pos - buffer.len(), value: buffer.take() });
+                                    self.word_queue.push_back(Word::Marker { pos: pos - next_iter.len() - buffer.len(), value: buffer.take() });
                                 };
                             };
 
