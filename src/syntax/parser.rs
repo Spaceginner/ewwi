@@ -284,7 +284,7 @@ impl Expression {
 
     pub const DATA_FNCS_ACCESS: &'static str = "#>";
     pub const DATA_CONSTS_ACCESS: &'static str = "->";
-    pub const DATA_SIGNALS_ACCESS: &'static str = ">>";
+    pub const DATA_SIGNALS_ACCESS: &'static str = ":>";
     pub const DATA_GROUP_ACCESS: &'static str = ".>";
     pub const DATA_TUPLE_ACCESS: &'static str = "%>";
     pub const DATA_ENUM_ACCESS: &'static str = "$>";
