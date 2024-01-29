@@ -662,62 +662,42 @@ impl<'a, C: Iterator<Item = char>> Parser<'a, C> {
         }
     }
 
-    fn parse_items<T>(&mut self, while_parsing: &'static str, marker_pair: (&str, &str), parsing_function: impl Fn(&mut Self) -> Res<T>) -> Res<Vec<T>> {
-        let mut items = Vec::new();
+    fn raw_parse_items<T>(&mut self, while_parsing: &'static str, end: &str, parsing_function: impl Fn(&mut Self) -> Res<T>) -> Res<Vec<T>> {
+        if self.next(while_parsing)?.opt_markers(while_parsing, &mut self.word_stream, &[end], &[])? {
+            Ok(vec![])
+        } else {
+            let mut items = Vec::new();
 
+            items.push(parsing_function(self)?);
+            loop {
+                if self.next(while_parsing)?.opt_markers(while_parsing, &mut self.word_stream, &[ITEM_SEPARATOR], &[])? {
+                    if !self.next(while_parsing)?.opt_markers(while_parsing, &mut self.word_stream, &[end], &[])? {
+                        items.push(parsing_function(self)?);
+                    } else {
+                        break;
+                    };
+                } else {
+                    self.next(while_parsing)?.markers(while_parsing, &[end], &[])?;
+                    break;
+                };
+            };
+
+            Ok(items)
+        }
+    }
+
+    fn parse_items<T>(&mut self, while_parsing: &'static str, marker_pair: (&str, &str), parsing_function: impl Fn(&mut Self) -> Res<T>) -> Res<Vec<T>> {
         self.next(while_parsing)?.markers(while_parsing, &[marker_pair.0], &[])?;
 
-        if self.next(while_parsing)?.opt_markers(while_parsing, &mut self.word_stream, &[marker_pair.1], &[])? {
-            return Ok(items);
-        };
-
-        // TODO allow for ITEM_SEPARATOR before closing word, ie for arguments: "(.0, )"
-        loop {
-            items.push(parsing_function(self)?);
-
-            match self.next(while_parsing)? {
-                Word::Marker { value, pos } =>
-                    match value.as_str() {
-                        ITEM_SEPARATOR => {},
-                        v if v == marker_pair.1 => break,
-                        _ => return Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing, pos, got: value, optional: false,
-                            expected: helper::le_convert(&[marker_pair.1, ITEM_SEPARATOR]) }),
-                    },
-                word => return Err(ParsingError::ExpectedDifferentWord { while_parsing, got: word,
-                    expecting_break: false, expecting_marker: true, expecting_literal: false, expecting_key: false, expecting_common: false }),
-            };
-        };
-
-        Ok(items)
+        self.raw_parse_items(while_parsing, marker_pair.1, parsing_function)
     }
 
     fn parse_opt_items<T>(&mut self, while_parsing: &'static str, marker_pair: (&str, &str), parsing_function: impl Fn(&mut Self) -> Res<T>) -> Res<Vec<T>> {
-        let mut items = Vec::new();
-
         if self.next(while_parsing)?.opt_markers(while_parsing, &mut self.word_stream, &[marker_pair.0], &[])? {
-            if self.next(while_parsing)?.opt_markers(while_parsing, &mut self.word_stream, &[marker_pair.1], &[])? {
-                return Ok(items);
-            };
-
-            // TODO allow for ITEM_SEPARATOR before closing word, ie for arguments: "(.0, )"
-            loop {
-                items.push(parsing_function(self)?);
-
-                match self.next(while_parsing)? {
-                    Word::Marker { value, pos } =>
-                        match value.as_str() {
-                            ITEM_SEPARATOR => {},
-                            v if v == marker_pair.1 => break,
-                            _ => return Err(ParsingError::ExpectedDifferentMarkerWord { while_parsing, pos, got: value, optional: false,
-                                expected: helper::le_convert(&[marker_pair.1, ITEM_SEPARATOR]) }),
-                        },
-                    word => return Err(ParsingError::ExpectedDifferentWord { while_parsing, got: word,
-                        expecting_break: false, expecting_marker: true, expecting_literal: false, expecting_key: false, expecting_common: false }),
-                };
-            };
-        };
-
-        Ok(items)
+            self.raw_parse_items(while_parsing, marker_pair.1, parsing_function)
+        } else {
+            Ok(vec![])
+        }
     }
 
     fn parse_type_tuple(&mut self) -> Res<TypeTuple> {
